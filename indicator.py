@@ -141,7 +141,6 @@ class Indicator:
         self.rows = []
         for _ in range(5):
             row = Gtk.MenuItem(label=TEXT[self.language]['loading'])
-            row.set_sensitive(False)
             self.menu.append(row)
             self.rows.append(row)
         self.menu.append(Gtk.SeparatorMenuItem())
