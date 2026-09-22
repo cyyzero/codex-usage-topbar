@@ -30,6 +30,8 @@ The app is installed in `~/.local/share/codex-usage-topbar`. The installer creat
 
 The indicator listens to GNOME's StatusNotifierWatcher over the session D-Bus and identifies the Desktop status item with the `ChatGPT` tooltip. It is visible and keeps its local app-server receiver only while Desktop is open; it hides and closes that receiver when Desktop exits. This avoids scanning `/proc`.
 
+GNOME can temporarily withdraw Desktop's status item while the screen is locked. The indicator preserves its current state during the lock and checks Desktop again when you unlock, so it returns to the top panel after unlocking.
+
 ## Uninstall
 
 Choose **Quit / 退出** in the panel menu, then run:

@@ -30,6 +30,8 @@ bash install.sh
 
 组件通过会话 D-Bus 监听 GNOME 的 StatusNotifierWatcher，并用 `ChatGPT` 提示文本识别 Desktop 的状态项：只有 Desktop 打开时，顶栏才可见并保持本地 app-server 接收器；Desktop 退出后，顶栏会隐藏并关闭该接收器。该方式不会扫描 `/proc`。
 
+GNOME 锁屏时可能会临时撤销 Desktop 的状态项。组件会在锁屏期间保留当前状态，并在解锁时重新检查 Desktop，因此解锁后会恢复到顶栏。
+
 ## 卸载
 
 先在顶栏菜单选择 **退出 / Quit**，然后执行：

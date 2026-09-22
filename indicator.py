@@ -24,6 +24,8 @@ CONFIG_PATH = os.path.join(
 )
 STATUS_NOTIFIER_WATCHER = 'org.kde.StatusNotifierWatcher'
 DESKTOP_STATUS_TOOLTIP = os.environ.get('CODEX_DESKTOP_STATUS_TOOLTIP', 'ChatGPT')
+SCREEN_SAVER_SERVICE = 'org.gnome.ScreenSaver'
+SCREEN_SAVER_PATH = '/org/gnome/ScreenSaver'
 
 TEXT = {
     'zh': {
@@ -96,6 +98,18 @@ def desktop_app_running(session_bus):
     return False
 
 
+def screen_locked(session_bus):
+    if not session_bus:
+        return False
+    try:
+        return session_bus.call_sync(
+            SCREEN_SAVER_SERVICE, SCREEN_SAVER_PATH,
+            SCREEN_SAVER_SERVICE, 'GetActive', None,
+            GLib.VariantType('(b)'), Gio.DBusCallFlags.NONE, 1000, None).unpack()[0]
+    except GLib.Error:
+        return False
+
+
 class Indicator:
     def __init__(self):
         self.busy = False
@@ -104,6 +118,7 @@ class Indicator:
         self.last_error = None
         self.connection_ready = False
         self.desktop_running = False
+        self.screen_locked = False
         self.lifecycle_generation = 0
         try:
             self.session_bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
@@ -111,9 +126,15 @@ class Indicator:
                 STATUS_NOTIFIER_WATCHER, 'org.kde.StatusNotifierWatcher', None,
                 '/StatusNotifierWatcher', None, Gio.DBusSignalFlags.NONE,
                 self.on_status_notifier_signal, None)
+            self.screen_saver_subscription = self.session_bus.signal_subscribe(
+                SCREEN_SAVER_SERVICE, SCREEN_SAVER_SERVICE, 'ActiveChanged',
+                SCREEN_SAVER_PATH, None, Gio.DBusSignalFlags.NONE,
+                self.on_screen_saver_signal, None)
+            self.screen_locked = screen_locked(self.session_bus)
         except GLib.Error:
             self.session_bus = None
             self.status_notifier_subscription = None
+            self.screen_saver_subscription = None
         self.language = self.load_language()
         self.client = UsageClient(self.on_rate_limits_updated)
         self.lib = ctypes.CDLL(ctypes.util.find_library('ayatana-appindicator3'))
@@ -219,6 +240,10 @@ class Indicator:
 
     def sync_desktop_lifecycle(self):
         running = desktop_app_running(self.session_bus)
+        # GNOME may withdraw Desktop's status item while the screen is locked.
+        # Preserve an already-visible indicator until the unlock check confirms exit.
+        if self.screen_locked and self.desktop_running and not running:
+            return GLib.SOURCE_CONTINUE
         if running == self.desktop_running:
             return GLib.SOURCE_CONTINUE
         self.desktop_running = running
@@ -239,6 +264,12 @@ class Indicator:
     def on_status_notifier_signal(self, _connection, _sender, _path, _interface,
                                   signal, _parameters, _user_data):
         if signal in ('StatusNotifierItemRegistered', 'StatusNotifierItemUnregistered'):
+            self.sync_desktop_lifecycle()
+
+    def on_screen_saver_signal(self, _connection, _sender, _path, _interface,
+                                _signal, parameters, _user_data):
+        self.screen_locked = parameters.unpack()[0]
+        if not self.screen_locked:
             self.sync_desktop_lifecycle()
 
     def on_rate_limits_updated(self, limits):
