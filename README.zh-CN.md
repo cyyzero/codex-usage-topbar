@@ -26,7 +26,7 @@ bash install.sh
 
 程序会安装到 `~/.local/share/codex-usage-topbar`。安装脚本会创建 `~/.config/autostart/codex-usage-topbar.desktop`，因此下次登录会自动启动；不需要 sudo。
 
-组件会监控本机 ChatGPT/Codex Desktop 进程：只有 Desktop 打开时，顶栏才可见并保持本地 app-server 接收器；Desktop 退出后，顶栏会隐藏并关闭该接收器。默认可执行文件路径为 `/usr/lib/chatgpt/ChatGPT`；若安装位置不同，可在启动前设置 `CODEX_DESKTOP_EXECUTABLE`。
+组件通过会话 D-Bus 监听 GNOME 的 StatusNotifierWatcher，并用 `ChatGPT` 提示文本识别 Desktop 的状态项：只有 Desktop 打开时，顶栏才可见并保持本地 app-server 接收器；Desktop 退出后，顶栏会隐藏并关闭该接收器。该方式不会扫描 `/proc`。
 
 ## 卸载
 

@@ -26,7 +26,7 @@ bash install.sh
 
 The app is installed in `~/.local/share/codex-usage-topbar`. The installer creates `~/.config/autostart/codex-usage-topbar.desktop`, so it starts at the next login. No sudo is required.
 
-The indicator watches the local ChatGPT/Codex Desktop process. It is visible and keeps its local app-server receiver only while Desktop is open; it hides and closes that receiver when Desktop exits. The default executable path is `/usr/lib/chatgpt/ChatGPT`; set `CODEX_DESKTOP_EXECUTABLE` before launch if your installation uses another path.
+The indicator listens to GNOME's StatusNotifierWatcher over the session D-Bus and identifies the Desktop status item with the `ChatGPT` tooltip. It is visible and keeps its local app-server receiver only while Desktop is open; it hides and closes that receiver when Desktop exits. This avoids scanning `/proc`.
 
 ## Uninstall
 

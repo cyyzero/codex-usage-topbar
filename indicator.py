@@ -12,7 +12,7 @@ import threading
 import gi
 
 gi.require_version('Gtk', '3.0')
-from gi.repository import GLib, Gtk
+from gi.repository import Gio, GLib, Gtk
 
 from usage import UsageClient
 
@@ -22,7 +22,8 @@ CONFIG_PATH = os.path.join(
     'codex-usage-topbar',
     'config.json',
 )
-DESKTOP_EXECUTABLE = os.environ.get('CODEX_DESKTOP_EXECUTABLE', '/usr/lib/chatgpt/ChatGPT')
+STATUS_NOTIFIER_WATCHER = 'org.kde.StatusNotifierWatcher'
+DESKTOP_STATUS_TOOLTIP = os.environ.get('CODEX_DESKTOP_STATUS_TOOLTIP', 'ChatGPT')
 
 TEXT = {
     'zh': {
@@ -69,23 +70,29 @@ def reset_text(window, language):
     return dt.datetime.fromtimestamp(stamp).strftime('%m-%d %H:%M')
 
 
-def desktop_app_running():
-    """Return whether the locally installed ChatGPT/Codex desktop app is running."""
-    target = os.path.realpath(DESKTOP_EXECUTABLE)
-    try:
-        processes = os.scandir('/proc')
-    except OSError:
+def desktop_app_running(session_bus):
+    """Detect the Desktop app through its GNOME status-notifier registration."""
+    if not session_bus:
         return False
-    with processes:
-        for process in processes:
-            if not process.name.isdecimal():
-                continue
+    try:
+        items = session_bus.call_sync(
+            STATUS_NOTIFIER_WATCHER, '/StatusNotifierWatcher',
+            'org.freedesktop.DBus.Properties', 'Get',
+            GLib.Variant('(ss)', (STATUS_NOTIFIER_WATCHER, 'RegisteredStatusNotifierItems')),
+            GLib.VariantType('(v)'), Gio.DBusCallFlags.NONE, 1000, None).unpack()[0]
+        for item in items:
+            service, path = item.split('@', 1) if '@' in item else (item, '/StatusNotifierItem')
             try:
-                executable = os.path.realpath(os.readlink(f'{process.path}/exe'))
-                if executable == target:
-                    return True
-            except OSError:
+                tooltip = session_bus.call_sync(
+                    service, path, 'org.freedesktop.DBus.Properties', 'Get',
+                    GLib.Variant('(ss)', ('org.kde.StatusNotifierItem', 'ToolTip')),
+                    GLib.VariantType('(v)'), Gio.DBusCallFlags.NONE, 500, None).unpack()[0]
+            except GLib.Error:
                 continue
+            if len(tooltip) > 2 and tooltip[2] == DESKTOP_STATUS_TOOLTIP:
+                return True
+    except GLib.Error:
+        return False
     return False
 
 
@@ -98,6 +105,15 @@ class Indicator:
         self.connection_ready = False
         self.desktop_running = False
         self.lifecycle_generation = 0
+        try:
+            self.session_bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+            self.status_notifier_subscription = self.session_bus.signal_subscribe(
+                STATUS_NOTIFIER_WATCHER, 'org.kde.StatusNotifierWatcher', None,
+                '/StatusNotifierWatcher', None, Gio.DBusSignalFlags.NONE,
+                self.on_status_notifier_signal, None)
+        except GLib.Error:
+            self.session_bus = None
+            self.status_notifier_subscription = None
         self.language = self.load_language()
         self.client = UsageClient(self.on_rate_limits_updated)
         self.lib = ctypes.CDLL(ctypes.util.find_library('ayatana-appindicator3'))
@@ -108,7 +124,6 @@ class Indicator:
         self.create_menu()
         self.label('Codex …')
         self.sync_desktop_lifecycle()
-        GLib.timeout_add_seconds(2, self.sync_desktop_lifecycle)
 
     def configure_library(self):
         signatures = [
@@ -211,7 +226,7 @@ class Indicator:
         GLib.idle_add(self.update, generation, result, error)
 
     def sync_desktop_lifecycle(self):
-        running = desktop_app_running()
+        running = desktop_app_running(self.session_bus)
         if running == self.desktop_running:
             return GLib.SOURCE_CONTINUE
         self.desktop_running = running
@@ -228,6 +243,11 @@ class Indicator:
             self.last_error = None
             self.lib.app_indicator_set_status(self.handle, 0)
         return GLib.SOURCE_CONTINUE
+
+    def on_status_notifier_signal(self, _connection, _sender, _path, _interface,
+                                  signal, _parameters, _user_data):
+        if signal in ('StatusNotifierItemRegistered', 'StatusNotifierItemUnregistered'):
+            self.sync_desktop_lifecycle()
 
     def on_rate_limits_updated(self, limits):
         if limits and self.desktop_running:
