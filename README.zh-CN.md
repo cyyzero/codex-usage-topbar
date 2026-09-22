@@ -37,4 +37,4 @@ rm -r ~/.local/share/codex-usage-topbar
 
 ## 数据来源
 
-启动和手动刷新时，组件通过本机 Codex 的 `account/rateLimits/read` 读取当前额度；随后保持本机 app-server 连接，接收 `account/rateLimits/updated` 的变更推送。每 30 分钟会进行一次兜底读取，以覆盖漏掉的通知。详情请见 [Codex App Server documentation](https://learn.chatgpt.com/docs/app-server)。
+组件不会调用 `account/rateLimits/read`。它保持本机 app-server 连接，只接收 `account/rateLimits/updated` 的变更推送；在 Codex 发出第一次用量变化前，顶栏会显示等待状态。详情请见 [Codex App Server documentation](https://learn.chatgpt.com/docs/app-server)。

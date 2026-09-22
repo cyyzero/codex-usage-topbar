@@ -27,21 +27,21 @@ TEXT = {
     'zh': {
         'week': '周', 'unknown': '未知', 'subscription': '订阅',
         'used': '已用', 'reset': '重置', 'updated': '上次更新',
-        'every_minute': '实时更新；每 30 分钟兜底刷新', 'local_time': '重置时间为本地时间',
+        'every_minute': '只接收 Codex 推送，不主动查询', 'local_time': '重置时间为本地时间',
         'stale': '⚠ 数据可能过期：', 'unavailable': 'Codex · 暂时无法读取',
         'waiting': '等待数据', 'login': '请确认 Codex 已登录',
-        'retry': '请在网络恢复后手动刷新', 'manual': '菜单可手动刷新',
-        'refresh': '立即刷新', 'language': '语言 / Language',
+        'retry': '请检查本机 Codex 状态后重连', 'manual': '等待下一次 Codex 用量推送',
+        'refresh': '重连本机 Codex', 'language': '语言 / Language',
         'quit': '退出', 'loading': '正在读取…', 'short': '短期', 'long': '长期',
     },
     'en': {
         'week': 'W', 'unknown': 'Unknown', 'subscription': 'Subscription',
         'used': 'Used', 'reset': 'Resets', 'updated': 'Last updated',
-        'every_minute': 'Live updates; 30 min fallback', 'local_time': 'Reset times are local',
+        'every_minute': 'Codex push only; no active queries', 'local_time': 'Reset times are local',
         'stale': '⚠ Data may be stale: ', 'unavailable': 'Codex · unavailable',
         'waiting': 'Waiting for data', 'login': 'Make sure Codex is signed in',
-        'retry': 'Refresh manually after the network recovers', 'manual': 'Use the menu to refresh',
-        'refresh': 'Refresh now', 'language': 'Language / 语言',
+        'retry': 'Check local Codex and reconnect', 'manual': 'Waiting for the next Codex usage update',
+        'refresh': 'Reconnect local Codex', 'language': 'Language / 语言',
         'quit': 'Quit', 'loading': 'Loading…', 'short': 'Short term', 'long': 'Long term',
     },
 }
@@ -74,6 +74,7 @@ class Indicator:
         self.last = None
         self.last_time = None
         self.last_error = None
+        self.connection_ready = False
         self.language = self.load_language()
         self.client = UsageClient(self.on_rate_limits_updated)
         self.lib = ctypes.CDLL(ctypes.util.find_library('ayatana-appindicator3'))
@@ -84,7 +85,6 @@ class Indicator:
         self.create_menu()
         self.label('Codex …')
         self.refresh()
-        GLib.timeout_add_seconds(1800, self.refresh)
 
     def configure_library(self):
         signatures = [
@@ -107,7 +107,7 @@ class Indicator:
             self.rows.append(row)
         self.menu.append(Gtk.SeparatorMenuItem())
         self.refresh_item = Gtk.MenuItem()
-        self.refresh_item.connect('activate', lambda *_: self.refresh())
+        self.refresh_item.connect('activate', lambda *_: self.reconnect())
         self.menu.append(self.refresh_item)
         self.language_item = Gtk.MenuItem()
         language_menu = Gtk.Menu()
@@ -134,9 +134,9 @@ class Indicator:
         try:
             with open(CONFIG_PATH, encoding='utf-8') as config:
                 language = json.load(config).get('language')
-                return language if language in TEXT else 'zh'
+                return language if language in TEXT else 'en'
         except (OSError, ValueError, AttributeError):
-            return 'zh'
+            return 'en'
 
     def save_language(self):
         try:
@@ -166,11 +166,16 @@ class Indicator:
         if not self.busy:
             self.busy = True
             threading.Thread(target=self.fetch, daemon=True).start()
-        return GLib.SOURCE_CONTINUE
+
+    def reconnect(self):
+        self.client.close()
+        self.connection_ready = False
+        self.refresh()
 
     def fetch(self):
         try:
-            result = self.client.connect() if not self.client.connected else self.client.read_limits()
+            self.client.connect()
+            result = None
             error = None
         except Exception as exception:
             result, error = None, str(exception)
@@ -184,11 +189,13 @@ class Indicator:
         self.last = {**(self.last or {}), **limits}
         self.last_time = dt.datetime.now()
         self.last_error = None
+        self.connection_ready = True
         self.render()
         return GLib.SOURCE_REMOVE
 
     def update(self, result, error):
         self.busy = False
+        self.connection_ready = error is None
         if result:
             self.last, self.last_time = result, dt.datetime.now()
         self.last_error = error
@@ -212,11 +219,17 @@ class Indicator:
                 text['stale'] + self.last_error if self.last_error else text['local_time'],
             ]
         else:
-            self.label('Codex ⚠')
-            labels = [
-                text['unavailable'], self.last_error or text['waiting'], text['login'],
-                text['retry'], text['manual'],
-            ]
+            self.label('Codex …' if self.connection_ready else 'Codex ⚠')
+            if self.connection_ready:
+                labels = [
+                    f'Codex · {text["waiting"]}', text['manual'], text['every_minute'],
+                    text['local_time'], text['refresh'],
+                ]
+            else:
+                labels = [
+                    text['unavailable'], self.last_error or text['waiting'], text['login'],
+                    text['retry'], text['manual'],
+                ]
         for row, label in zip(self.rows, labels):
             row.set_label(label)
 

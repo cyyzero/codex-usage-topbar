@@ -1,14 +1,13 @@
 #!/usr/bin/python3
-"""Persistent local connection to Codex subscription-limit updates."""
+"""Persistent local receiver for Codex subscription-limit notifications."""
 import json
-import queue
 import shutil
 import subprocess
 import threading
 
 
 class UsageClient:
-    """Read limits once, then receive account/rateLimits/updated notifications."""
+    """Receive account/rateLimits/updated without querying current limits."""
 
     def __init__(self, on_update=None):
         self.on_update = on_update
@@ -23,7 +22,7 @@ class UsageClient:
 
     def connect(self):
         if self.connected:
-            return self.read_limits()
+            return
         binary = shutil.which('codex') or '/usr/lib/chatgpt/resources/codex'
         self.process = subprocess.Popen(
             [binary, 'app-server', '--stdio'],
@@ -34,15 +33,6 @@ class UsageClient:
             'clientInfo': {'name': 'codex_usage_topbar', 'version': '1.1.0'},
         })
         self._send({'method': 'initialized', 'params': {}})
-        return self.read_limits()
-
-    def read_limits(self):
-        result = self._request('account/rateLimits/read')
-        limits = (result.get('rateLimitsByLimitId') or {}).get('codex')
-        limits = limits or result.get('rateLimits')
-        if not limits:
-            raise RuntimeError('The current account did not return Codex limits')
-        return limits
 
     def close(self):
         process, self.process = self.process, None
@@ -57,19 +47,20 @@ class UsageClient:
     def _request(self, method, params=None, timeout=25):
         if not self.connected:
             raise RuntimeError('Codex app-server is not running')
-        response = queue.Queue(maxsize=1)
+        response = threading.Event()
+        result = []
         with self._lock:
             request_id = self._next_id
             self._next_id += 1
-            self._pending[request_id] = response
+            self._pending[request_id] = (response, result)
             self._send({'id': request_id, 'method': method, 'params': params or {}})
-        try:
-            message = response.get(timeout=timeout)
-        except queue.Empty as error:
-            raise TimeoutError('Timed out while reading Codex usage') from error
-        finally:
+        if not response.wait(timeout):
             with self._lock:
                 self._pending.pop(request_id, None)
+            raise TimeoutError('Timed out while connecting to local Codex')
+        with self._lock:
+            self._pending.pop(request_id, None)
+        message = result[0]
         if 'error' in message:
             raise RuntimeError('Codex returned an error while reading usage')
         return message['result']
@@ -89,25 +80,20 @@ class UsageClient:
                     with self._lock:
                         response = self._pending.get(message['id'])
                     if response:
-                        response.put(message)
+                        event, result = response
+                        result.append(message)
+                        event.set()
                 elif message.get('method') == 'account/rateLimits/updated' and self.on_update:
                     self.on_update(message.get('params', {}).get('rateLimits'))
         except (OSError, ValueError):
             pass
-
-
-def read_usage():
-    """One-shot helper for command-line diagnostics."""
+if __name__ == '__main__':
     client = UsageClient()
     try:
-        return client.connect()
-    finally:
-        client.close()
-
-
-if __name__ == '__main__':
-    try:
-        print(json.dumps(read_usage(), ensure_ascii=False))
+        client.connect()
+        print(json.dumps({'status': 'connected'}, ensure_ascii=False))
     except Exception as error:
         print(json.dumps({'error': str(error)}, ensure_ascii=False))
         raise SystemExit(1)
+    finally:
+        client.close()
