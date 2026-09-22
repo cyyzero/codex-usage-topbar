@@ -2,7 +2,7 @@
 
 [中文说明](README.zh-CN.md)
 
-Show current Codex subscription usage in the Ubuntu GNOME top panel. It uses the locally signed-in Codex account and never reads or stores sign-in tokens.
+Show current Codex subscription usage in the Ubuntu GNOME top panel. The indicator talks only to the local `codex app-server` process over standard input/output; Codex handles its own authenticated connection to OpenAI. The indicator never reads or stores sign-in tokens.
 
 ![Ubuntu GNOME top-panel indicator and language menu](docs/topbar-demo.png)
 
@@ -37,4 +37,4 @@ rm -r ~/.local/share/codex-usage-topbar
 
 ## Data source
 
-The indicator refreshes every 60 seconds through the Codex app-server `account/rateLimits/read` method. See the [Codex App Server documentation](https://learn.chatgpt.com/docs/app-server).
+At startup and on manual refresh, the indicator asks local Codex for a current value through `account/rateLimits/read`. It then keeps that local app-server connection open and applies `account/rateLimits/updated` notifications. A 30-minute fallback read covers missed notifications. See the [Codex App Server documentation](https://learn.chatgpt.com/docs/app-server).

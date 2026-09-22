@@ -2,7 +2,7 @@
 
 [English README](README.md)
 
-在 Ubuntu GNOME 顶栏显示当前 Codex 订阅额度。它使用本机已经登录的 Codex 账户，不会读取或保存登录令牌。
+在 Ubuntu GNOME 顶栏显示当前 Codex 订阅额度。顶栏程序只通过标准输入输出与本机 `codex app-server` 通信，由 Codex 自己处理到 OpenAI 的认证连接；顶栏不会读取或保存登录令牌。
 
 ![Ubuntu GNOME 顶栏指示器和语言切换菜单](docs/topbar-demo.png)
 
@@ -37,4 +37,4 @@ rm -r ~/.local/share/codex-usage-topbar
 
 ## 数据来源
 
-组件每 60 秒通过 Codex app-server 的 `account/rateLimits/read` 接口读取订阅额度。详情请见 [Codex App Server documentation](https://learn.chatgpt.com/docs/app-server)。
+启动和手动刷新时，组件通过本机 Codex 的 `account/rateLimits/read` 读取当前额度；随后保持本机 app-server 连接，接收 `account/rateLimits/updated` 的变更推送。每 30 分钟会进行一次兜底读取，以覆盖漏掉的通知。详情请见 [Codex App Server documentation](https://learn.chatgpt.com/docs/app-server)。

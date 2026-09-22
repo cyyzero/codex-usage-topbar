@@ -14,7 +14,7 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import GLib, Gtk
 
-from usage import read_usage
+from usage import UsageClient
 
 
 CONFIG_PATH = os.path.join(
@@ -27,20 +27,20 @@ TEXT = {
     'zh': {
         'week': '周', 'unknown': '未知', 'subscription': '订阅',
         'used': '已用', 'reset': '重置', 'updated': '上次更新',
-        'every_minute': '每 60 秒刷新', 'local_time': '重置时间为本地时间',
+        'every_minute': '实时更新；每 30 分钟兜底刷新', 'local_time': '重置时间为本地时间',
         'stale': '⚠ 数据可能过期：', 'unavailable': 'Codex · 暂时无法读取',
         'waiting': '等待数据', 'login': '请确认 Codex 已登录',
-        'retry': '每 60 秒自动重试', 'manual': '菜单可手动刷新',
+        'retry': '请在网络恢复后手动刷新', 'manual': '菜单可手动刷新',
         'refresh': '立即刷新', 'language': '语言 / Language',
         'quit': '退出', 'loading': '正在读取…', 'short': '短期', 'long': '长期',
     },
     'en': {
         'week': 'W', 'unknown': 'Unknown', 'subscription': 'Subscription',
         'used': 'Used', 'reset': 'Resets', 'updated': 'Last updated',
-        'every_minute': 'Refreshes every 60 seconds', 'local_time': 'Reset times are local',
+        'every_minute': 'Live updates; 30 min fallback', 'local_time': 'Reset times are local',
         'stale': '⚠ Data may be stale: ', 'unavailable': 'Codex · unavailable',
         'waiting': 'Waiting for data', 'login': 'Make sure Codex is signed in',
-        'retry': 'Retries every 60 seconds', 'manual': 'Use the menu to refresh',
+        'retry': 'Refresh manually after the network recovers', 'manual': 'Use the menu to refresh',
         'refresh': 'Refresh now', 'language': 'Language / 语言',
         'quit': 'Quit', 'loading': 'Loading…', 'short': 'Short term', 'long': 'Long term',
     },
@@ -75,6 +75,7 @@ class Indicator:
         self.last_time = None
         self.last_error = None
         self.language = self.load_language()
+        self.client = UsageClient(self.on_rate_limits_updated)
         self.lib = ctypes.CDLL(ctypes.util.find_library('ayatana-appindicator3'))
         self.configure_library()
         self.handle = self.lib.app_indicator_new(
@@ -83,7 +84,7 @@ class Indicator:
         self.create_menu()
         self.label('Codex …')
         self.refresh()
-        GLib.timeout_add_seconds(60, self.refresh)
+        GLib.timeout_add_seconds(1800, self.refresh)
 
     def configure_library(self):
         signatures = [
@@ -169,10 +170,22 @@ class Indicator:
 
     def fetch(self):
         try:
-            result, error = read_usage(), None
+            result = self.client.connect() if not self.client.connected else self.client.read_limits()
+            error = None
         except Exception as exception:
             result, error = None, str(exception)
         GLib.idle_add(self.update, result, error)
+
+    def on_rate_limits_updated(self, limits):
+        if limits:
+            GLib.idle_add(self.update_from_notification, limits)
+
+    def update_from_notification(self, limits):
+        self.last = {**(self.last or {}), **limits}
+        self.last_time = dt.datetime.now()
+        self.last_error = None
+        self.render()
+        return GLib.SOURCE_REMOVE
 
     def update(self, result, error):
         self.busy = False
@@ -216,6 +229,11 @@ if __name__ == '__main__':
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         raise SystemExit(0)
-    signal.signal(signal.SIGTERM, lambda *_: Gtk.main_quit())
-    Indicator()
+    indicator = Indicator()
+
+    def shutdown(*_):
+        indicator.client.close()
+        Gtk.main_quit()
+
+    signal.signal(signal.SIGTERM, shutdown)
     Gtk.main()
