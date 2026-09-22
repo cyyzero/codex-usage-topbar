@@ -2,6 +2,8 @@
 
 [中文说明](README.zh-CN.md)
 
+Source: [cyyzero/codex-usage-topbar](https://github.com/cyyzero/codex-usage-topbar)
+
 Show current Codex subscription usage in the Ubuntu GNOME top panel. The indicator talks only to the local `codex app-server` process over standard input/output; Codex handles its own authenticated connection to OpenAI. The indicator never reads or stores sign-in tokens.
 
 ![Ubuntu GNOME top-panel indicator and language menu](docs/topbar-demo.png)
@@ -19,7 +21,7 @@ Choose **Language / 语言** in the menu to switch between English and Chinese. 
 ## Install
 
 ```bash
-git clone <your-repository-url>
+git clone https://github.com/cyyzero/codex-usage-topbar.git
 cd codex-usage-topbar
 bash install.sh
 ```

@@ -2,6 +2,8 @@
 
 [English README](README.md)
 
+源码仓库：[cyyzero/codex-usage-topbar](https://github.com/cyyzero/codex-usage-topbar)
+
 在 Ubuntu GNOME 顶栏显示当前 Codex 订阅额度。顶栏程序只通过标准输入输出与本机 `codex app-server` 通信，由 Codex 自己处理到 OpenAI 的认证连接；顶栏不会读取或保存登录令牌。
 
 ![Ubuntu GNOME 顶栏指示器和语言切换菜单](docs/topbar-demo.png)
@@ -19,7 +21,7 @@
 ## 安装
 
 ```bash
-git clone <你的仓库地址>
+git clone https://github.com/cyyzero/codex-usage-topbar.git
 cd codex-usage-topbar
 bash install.sh
 ```
