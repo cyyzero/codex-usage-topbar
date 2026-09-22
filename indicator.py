@@ -22,6 +22,7 @@ CONFIG_PATH = os.path.join(
     'codex-usage-topbar',
     'config.json',
 )
+DESKTOP_EXECUTABLE = os.environ.get('CODEX_DESKTOP_EXECUTABLE', '/usr/lib/chatgpt/ChatGPT')
 
 TEXT = {
     'zh': {
@@ -68,6 +69,26 @@ def reset_text(window, language):
     return dt.datetime.fromtimestamp(stamp).strftime('%m-%d %H:%M')
 
 
+def desktop_app_running():
+    """Return whether the locally installed ChatGPT/Codex desktop app is running."""
+    target = os.path.realpath(DESKTOP_EXECUTABLE)
+    try:
+        processes = os.scandir('/proc')
+    except OSError:
+        return False
+    with processes:
+        for process in processes:
+            if not process.name.isdecimal():
+                continue
+            try:
+                executable = os.path.realpath(os.readlink(f'{process.path}/exe'))
+                if executable == target:
+                    return True
+            except OSError:
+                continue
+    return False
+
+
 class Indicator:
     def __init__(self):
         self.busy = False
@@ -75,16 +96,19 @@ class Indicator:
         self.last_time = None
         self.last_error = None
         self.connection_ready = False
+        self.desktop_running = False
+        self.lifecycle_generation = 0
         self.language = self.load_language()
         self.client = UsageClient(self.on_rate_limits_updated)
         self.lib = ctypes.CDLL(ctypes.util.find_library('ayatana-appindicator3'))
         self.configure_library()
         self.handle = self.lib.app_indicator_new(
             b'codex-usage-topbar', b'utilities-system-monitor-symbolic', 0)
-        self.lib.app_indicator_set_status(self.handle, 1)
+        self.lib.app_indicator_set_status(self.handle, 0)
         self.create_menu()
         self.label('Codex …')
-        self.refresh()
+        self.sync_desktop_lifecycle()
+        GLib.timeout_add_seconds(2, self.sync_desktop_lifecycle)
 
     def configure_library(self):
         signatures = [
@@ -163,26 +187,50 @@ class Indicator:
             self.handle, text.encode(), b'Codex 5h 100% | W 100%')
 
     def refresh(self):
-        if not self.busy:
+        if self.desktop_running and not self.busy:
             self.busy = True
-            threading.Thread(target=self.fetch, daemon=True).start()
+            generation = self.lifecycle_generation
+            threading.Thread(target=self.fetch, args=(generation,), daemon=True).start()
 
     def reconnect(self):
+        if not self.desktop_running:
+            return
         self.client.close()
         self.connection_ready = False
         self.refresh()
 
-    def fetch(self):
+    def fetch(self, generation):
+        if generation != self.lifecycle_generation or not self.desktop_running:
+            return
         try:
             self.client.connect()
             result = None
             error = None
         except Exception as exception:
             result, error = None, str(exception)
-        GLib.idle_add(self.update, result, error)
+        GLib.idle_add(self.update, generation, result, error)
+
+    def sync_desktop_lifecycle(self):
+        running = desktop_app_running()
+        if running == self.desktop_running:
+            return GLib.SOURCE_CONTINUE
+        self.desktop_running = running
+        self.lifecycle_generation += 1
+        if running:
+            self.lib.app_indicator_set_status(self.handle, 1)
+            self.refresh()
+        else:
+            self.client.close()
+            self.busy = False
+            self.connection_ready = False
+            self.last = None
+            self.last_time = None
+            self.last_error = None
+            self.lib.app_indicator_set_status(self.handle, 0)
+        return GLib.SOURCE_CONTINUE
 
     def on_rate_limits_updated(self, limits):
-        if limits:
+        if limits and self.desktop_running:
             GLib.idle_add(self.update_from_notification, limits)
 
     def update_from_notification(self, limits):
@@ -193,7 +241,9 @@ class Indicator:
         self.render()
         return GLib.SOURCE_REMOVE
 
-    def update(self, result, error):
+    def update(self, generation, result, error):
+        if generation != self.lifecycle_generation or not self.desktop_running:
+            return GLib.SOURCE_REMOVE
         self.busy = False
         self.connection_ready = error is None
         if result:
