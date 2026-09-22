@@ -29,21 +29,21 @@ TEXT = {
     'zh': {
         'week': '周', 'unknown': '未知', 'subscription': '订阅',
         'used': '已用', 'reset': '重置', 'updated': '上次更新',
-        'every_minute': '只接收 Codex 推送，不主动查询', 'local_time': '重置时间为本地时间',
+        'every_minute': '实时推送；启动和手动刷新时读取', 'local_time': '重置时间为本地时间',
         'stale': '⚠ 数据可能过期：', 'unavailable': 'Codex · 暂时无法读取',
         'waiting': '等待数据', 'login': '请确认 Codex 已登录',
-        'retry': '请检查本机 Codex 状态后重连', 'manual': '等待下一次 Codex 用量推送',
-        'refresh': '重连本机 Codex', 'language': '语言 / Language',
+        'retry': '请检查本机 Codex 状态后刷新', 'manual': '菜单可手动刷新',
+        'refresh': '立即刷新', 'language': '语言 / Language',
         'quit': '退出', 'loading': '正在读取…', 'short': '短期', 'long': '长期',
     },
     'en': {
         'week': 'W', 'unknown': 'Unknown', 'subscription': 'Subscription',
         'used': 'Used', 'reset': 'Resets', 'updated': 'Last updated',
-        'every_minute': 'Codex push only; no active queries', 'local_time': 'Reset times are local',
+        'every_minute': 'Live updates; reads on start and manual refresh', 'local_time': 'Reset times are local',
         'stale': '⚠ Data may be stale: ', 'unavailable': 'Codex · unavailable',
         'waiting': 'Waiting for data', 'login': 'Make sure Codex is signed in',
-        'retry': 'Check local Codex and reconnect', 'manual': 'Waiting for the next Codex usage update',
-        'refresh': 'Reconnect local Codex', 'language': 'Language / 语言',
+        'retry': 'Check local Codex and refresh', 'manual': 'Use the menu to refresh',
+        'refresh': 'Refresh now', 'language': 'Language / 语言',
         'quit': 'Quit', 'loading': 'Loading…', 'short': 'Short term', 'long': 'Long term',
     },
 }
@@ -146,7 +146,7 @@ class Indicator:
             self.rows.append(row)
         self.menu.append(Gtk.SeparatorMenuItem())
         self.refresh_item = Gtk.MenuItem()
-        self.refresh_item.connect('activate', lambda *_: self.reconnect())
+        self.refresh_item.connect('activate', lambda *_: self.refresh())
         self.menu.append(self.refresh_item)
         self.language_item = Gtk.MenuItem()
         language_menu = Gtk.Menu()
@@ -207,19 +207,12 @@ class Indicator:
             generation = self.lifecycle_generation
             threading.Thread(target=self.fetch, args=(generation,), daemon=True).start()
 
-    def reconnect(self):
-        if not self.desktop_running:
-            return
-        self.client.close()
-        self.connection_ready = False
-        self.refresh()
-
     def fetch(self, generation):
         if generation != self.lifecycle_generation or not self.desktop_running:
             return
         try:
             self.client.connect()
-            result = None
+            result = self.client.read_limits()
             error = None
         except Exception as exception:
             result, error = None, str(exception)

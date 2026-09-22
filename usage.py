@@ -34,6 +34,15 @@ class UsageClient:
         })
         self._send({'method': 'initialized', 'params': {}})
 
+    def read_limits(self):
+        """Read a current snapshot through the already connected local Codex."""
+        result = self._request('account/rateLimits/read')
+        limits = (result.get('rateLimitsByLimitId') or {}).get('codex')
+        limits = limits or result.get('rateLimits')
+        if not limits:
+            raise RuntimeError('The current account did not return Codex limits')
+        return limits
+
     def close(self):
         process, self.process = self.process, None
         if process and process.poll() is None:
@@ -62,7 +71,7 @@ class UsageClient:
             self._pending.pop(request_id, None)
         message = result[0]
         if 'error' in message:
-            raise RuntimeError('Codex returned an error while reading usage')
+            raise RuntimeError(f'Codex returned an error: {message["error"]}')
         return message['result']
 
     def _send(self, message):

@@ -39,4 +39,4 @@ rm -r ~/.local/share/codex-usage-topbar
 
 ## Data source
 
-The indicator does not call `account/rateLimits/read`. It keeps a local app-server connection open and only applies `account/rateLimits/updated` notifications. Until Codex emits a usage change, the panel remains in a waiting state. See the [Codex App Server documentation](https://learn.chatgpt.com/docs/app-server).
+When Desktop starts the indicator, and when you select **Refresh now**, the indicator asks local Codex for one current snapshot through `account/rateLimits/read`. It then keeps that local app-server connection open and applies `account/rateLimits/updated` notifications. It does not run a periodic fallback query. See the [Codex App Server documentation](https://learn.chatgpt.com/docs/app-server).
