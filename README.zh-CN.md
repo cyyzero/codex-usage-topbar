@@ -43,4 +43,4 @@ rm -r ~/.local/share/codex-usage-topbar
 
 ## 数据来源
 
-Desktop 启动顶栏时，以及你选择 **立即刷新** 时，组件会通过本机 Codex 的 `account/rateLimits/read` 读取一次当前快照；随后保持本机 app-server 连接，接收 `account/rateLimits/updated` 的变更推送。它不会进行定时兜底查询。详情请见 [Codex App Server documentation](https://learn.chatgpt.com/docs/app-server)。
+Desktop 启动顶栏时、你选择 **立即刷新** 时，以及 Desktop 打开期间每分钟一次，组件会通过本机 Codex 的 `account/rateLimits/read` 读取当前快照；同时保持本机 app-server 连接，接收到达的 `account/rateLimits/updated` 推送。定期的本机校验可避免漏掉推送后顶栏长期展示过期数据。详情请见 [Codex App Server documentation](https://learn.chatgpt.com/docs/app-server)。

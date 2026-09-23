@@ -31,7 +31,7 @@ TEXT = {
     'zh': {
         'week': '周', 'unknown': '未知', 'subscription': '订阅',
         'used': '已用', 'reset': '重置', 'updated': '上次更新',
-        'every_minute': '实时推送；启动和手动刷新时读取', 'local_time': '重置时间为本地时间',
+        'every_minute': '实时推送；每分钟校验一次', 'local_time': '重置时间为本地时间',
         'stale': '⚠ 数据可能过期：', 'unavailable': 'Codex · 暂时无法读取',
         'waiting': '等待数据', 'login': '请确认 Codex 已登录',
         'retry': '请检查本机 Codex 状态后刷新', 'manual': '菜单可手动刷新',
@@ -41,7 +41,7 @@ TEXT = {
     'en': {
         'week': 'W', 'unknown': 'Unknown', 'subscription': 'Subscription',
         'used': 'Used', 'reset': 'Resets', 'updated': 'Last updated',
-        'every_minute': 'Live updates; reads on start and manual refresh', 'local_time': 'Reset times are local',
+        'every_minute': 'Live updates; verifies every minute', 'local_time': 'Reset times are local',
         'stale': '⚠ Data may be stale: ', 'unavailable': 'Codex · unavailable',
         'waiting': 'Waiting for data', 'login': 'Make sure Codex is signed in',
         'retry': 'Check local Codex and refresh', 'manual': 'Use the menu to refresh',
@@ -145,6 +145,7 @@ class Indicator:
         self.create_menu()
         self.label('Codex …')
         self.sync_desktop_lifecycle()
+        GLib.timeout_add_seconds(60, self.reconcile_limits)
 
     def configure_library(self):
         signatures = [
@@ -226,6 +227,10 @@ class Indicator:
             self.busy = True
             generation = self.lifecycle_generation
             threading.Thread(target=self.fetch, args=(generation,), daemon=True).start()
+
+    def reconcile_limits(self):
+        self.refresh()
+        return GLib.SOURCE_CONTINUE
 
     def fetch(self, generation):
         if generation != self.lifecycle_generation or not self.desktop_running:
